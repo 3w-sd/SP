@@ -32,14 +32,13 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-
-    # 3rd Party Apps
+    # Third-party apps
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
-
-    # Local Apps
-    'api',
+    'django_filters',  # <-- ADD THIS
+    # Local apps
+    'api', 
 ]
 
 MIDDLEWARE = [
@@ -143,7 +142,15 @@ CORS_ALLOWED_ORIGINS = [
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-    )
+    ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated',
+    ),
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 10,
+    'DEFAULT_FILTER_BACKENDS': (
+        'django_filters.rest_framework.DjangoFilterBackend',
+    ),
 }
 
 # --- SIMPLE JWT SETTINGS ---
