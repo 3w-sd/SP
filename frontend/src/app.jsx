@@ -1,17 +1,17 @@
 // File: frontend/src/App.jsx
-// This is the COMPLETE, FINALIZED file with the useParams fix.
+// This is the COMPLETE, FINALIZED file with all modules and fixes.
 
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useNavigate, Link, useParams } from 'react-router-dom'; // <-- useParams IMPORTED HERE
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, Link, useParams } from 'react-router-dom';
 import axios from 'axios';
-import { jwtDecode } from 'jwt-decode'; 
+import { jwtDecode } from 'jwt-decode';
 
 // --- 1. API Setup (Axios) ---
 const api = axios.create({
     baseURL: 'http://127.0.0.1:8000/api/',
 });
 
-// --- 2. Auth Context ---
+// --- 2. Auth Context & Hooks ---
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
@@ -26,7 +26,7 @@ export const AuthProvider = ({ children }) => {
             : null
     );
     const [loading, setLoading] = useState(false);
-    
+
     const navigate = useNavigate();
 
     // Use useCallback for stable functions passed to useEffect
@@ -76,15 +76,13 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-
-    // This effect runs when authTokens change (on login/logout) and checks token expiry
     useEffect(() => {
         if (authTokens) {
             api.defaults.headers.common['Authorization'] = 'Bearer ' + authTokens.access;
         } else {
             delete api.defaults.headers.common['Authorization'];
         }
-        
+
         const checkTokenExpiry = () => {
             if (authTokens) {
                 const decodedToken = jwtDecode(authTokens.access);
@@ -94,7 +92,7 @@ export const AuthProvider = ({ children }) => {
             }
         };
         checkTokenExpiry();
-        
+
     }, [authTokens, logoutUser]);
 
 
@@ -104,7 +102,7 @@ export const AuthProvider = ({ children }) => {
         loginUser,
         registerUser,
         logoutUser,
-        api, 
+        api,
         loading,
         setLoading,
     };
@@ -150,6 +148,10 @@ const MainLayout = ({ children }) => {
                                     {user.role === 'ADMIN' && (
                                         <NavLink to="/manage-departments">Departments</NavLink>
                                     )}
+                                    {/* Link for Instructors/Admins to schedule lectures */}
+                                    {(user.role === 'ADMIN' || user.role === 'LECTURER') && (
+                                        <NavLink to="/schedule-lectures">Schedule</NavLink>
+                                    )}
                                     <NavLink to="/profile">Profile</NavLink>
                                 </div>
                             </div>
@@ -178,27 +180,96 @@ const MainLayout = ({ children }) => {
 };
 
 const NavLink = ({ to, children }) => (
-    <Link 
-        to={to} 
+    <Link
+        to={to}
         className="inline-flex items-center px-3 pt-1 border-b-2 border-transparent text-sm font-medium text-gray-600 hover:border-indigo-500 hover:text-indigo-600 transition duration-150"
     >
         {children}
     </Link>
 );
 
+// --- 5. Reusable Form Field Components ---
+const InputField = ({ label, name, type = "text", value, onChange, required = false, step, placeholder }) => (
+    <div>
+        <label className="block text-sm font-medium text-gray-700">{label}</label>
+        <input
+            type={type}
+            name={name}
+            value={value}
+            onChange={onChange}
+            required={required}
+            step={step}
+            placeholder={placeholder}
+            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+        />
+    </div>
+);
 
-// --- 5. Auth Page (Existing) ---
+const TextAreaField = ({ label, name, value, onChange, rows, required = false, placeholder }) => (
+    <div>
+        <label className="block text-sm font-medium text-gray-700">{label}</label>
+        <textarea
+            name={name}
+            value={value}
+            onChange={onChange}
+            rows={rows}
+            required={required}
+            placeholder={placeholder}
+            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+        />
+    </div>
+);
+
+const SelectField = ({ label, name, value, onChange, options, isUser = false, required = false, disabled = false }) => (
+    <div>
+        <label className="block text-sm font-medium text-gray-700">{label}</label>
+        <select
+            name={name}
+            value={value}
+            onChange={onChange}
+            required={required}
+            disabled={disabled}
+            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 bg-white disabled:bg-gray-200"
+        >
+            <option value="">--- Select ---</option>
+            {options.map(opt => (
+                <option key={opt.id} value={opt.id}>
+                    {isUser ? `${opt.first_name} ${opt.last_name} (${opt.email})` : `${opt.name} (${opt.code})`}
+                </option>
+            ))}
+        </select>
+    </div>
+);
+
+const InfoChip = ({ label, value }) => (
+    <div className="bg-gray-100 p-4 rounded-lg">
+        <p className="text-sm text-gray-500">{label}</p>
+        <p className="text-lg font-semibold text-gray-900">{value}</p>
+    </div>
+);
+
+const ProfileItem = ({ label, value }) => (
+    <div className="flex justify-between items-center border-b pb-2">
+        <span className="text-sm font-medium text-gray-500">{label}</span>
+        <span className="text-base text-gray-800 font-medium">{value}</span>
+    </div>
+);
+
+
+// --- 6. Core Pages / Functional Components (Defined before App) ---
+
+// --- Auth Page ---
 const AuthPage = () => {
     const [isLogin, setIsLogin] = useState(true);
     const { loginUser, registerUser, loading } = useAuth();
-    
+
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [firstName, setFirstName] = useState('');
     const [lastName, setLastName] = useState('');
     const [role, setRole] = useState('STUDENT');
-    
-    const [error, setError] = useState(''); 
+
+    const [error, setError] = useState('');
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -251,8 +322,8 @@ const AuthPage = () => {
                         <label className="block text-sm font-medium text-gray-700">Password</label>
                         <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500" />
                     </div>
-                    <button 
-                        type="submit" 
+                    <button
+                        type="submit"
                         disabled={loading}
                         className="w-full py-3 px-4 border border-transparent rounded-lg shadow-lg text-lg font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-400"
                     >
@@ -270,7 +341,7 @@ const AuthPage = () => {
     );
 };
 
-// --- 6. Profile Page (Existing) ---
+// --- Profile Page ---
 const ProfilePage = () => {
     const { user, api, setLoading, loading } = useAuth();
     const [profile, setProfile] = useState(null);
@@ -321,22 +392,13 @@ const ProfilePage = () => {
     );
 };
 
-const ProfileItem = ({ label, value }) => (
-    <div className="flex justify-between items-center border-b pb-2">
-        <span className="text-sm font-medium text-gray-500">{label}</span>
-        <span className="text-base text-gray-800 font-medium">{value}</span>
-    </div>
-);
 
-
-// --- 7. Course & Enrollment Components ---
-
-// --- Course List Page (Existing) ---
+// --- Course List Page ---
 const CoursesListPage = () => {
     const { user, api, loading, setLoading } = useAuth();
     const [courses, setCourses] = useState([]);
     const [search, setSearch] = useState('');
-    
+
     useEffect(() => {
         setLoading(true);
         api.get('/courses/', { params: { search } })
@@ -371,7 +433,7 @@ const CoursesListPage = () => {
     );
 };
 
-// --- Course Card (for List Page) ---
+// --- Course Card ---
 const CourseCard = ({ course }) => {
     const navigate = useNavigate();
     return (
@@ -379,7 +441,7 @@ const CourseCard = ({ course }) => {
             <div>
                 <span className="text-sm font-semibold text-indigo-600">{course.code}</span>
                 <h2 className="text-xl font-bold text-gray-900 mt-1">{course.name}</h2>
-                <p className="text-gray-600 text-sm mt-2">{course.description.substring(0, 100)}...</p>
+                <p className="text-gray-600 text-sm mt-2">{course.description ? course.description.substring(0, 100) : ''}...</p>
                 <p className="text-sm text-gray-800 mt-4">
                     Instructor: {course.instructor ? `${course.instructor.first_name} ${course.instructor.last_name}` : 'TBD'}
                 </p>
@@ -388,7 +450,7 @@ const CourseCard = ({ course }) => {
                 <span className="text-lg font-semibold text-gray-800">
                     {course.seats_left} <span className="text-sm font-normal text-gray-500">seats left</span>
                 </span>
-                <button 
+                <button
                     onClick={() => navigate(`/courses/${course.id}`)}
                     className="px-4 py-2 bg-gray-800 text-white rounded-lg shadow hover:bg-gray-900"
                 >
@@ -403,13 +465,21 @@ const CourseCard = ({ course }) => {
 const CourseDetailPage = () => {
     const { user, api, loading, setLoading } = useAuth();
     const [course, setCourse] = useState(null);
-    const { id } = useParams(); // <-- FIXED: CALLING useParams DIRECTLY
+    const [lectures, setLectures] = useState([]);
+    const [attendancePin, setAttendancePin] = useState('');
+    const { id } = useParams();
     const navigate = useNavigate();
 
     useEffect(() => {
         setLoading(true);
-        api.get(`/courses/${id}/`)
-            .then(res => setCourse(res.data))
+        const coursePromise = api.get(`/courses/${id}/`);
+        const lecturePromise = api.get(`/lectures/?course=${id}`);
+
+        Promise.all([coursePromise, lecturePromise])
+            .then(([courseRes, lectureRes]) => {
+                setCourse(courseRes.data);
+                setLectures(lectureRes.data.results || lectureRes.data);
+            })
             .catch(err => console.error(err))
             .finally(() => setLoading(false));
     }, [id, api, setLoading]);
@@ -428,68 +498,184 @@ const CourseDetailPage = () => {
         }
     };
 
-    if (loading) return <p>Loading course details...</p>;
+    const handleMarkAttendance = async (lectureId) => {
+        if (loading) return;
+
+        const isPinMode = !!attendancePin || (user.role === 'ADMIN' && user.master_pin);
+        setLoading(true);
+
+        const markAttendanceRequest = async (latitude = null, longitude = null) => {
+             try {
+                const payload = {
+                    lecture: lectureId,
+                    latitude: latitude,
+                    longitude: longitude,
+                    attendance_pin: attendancePin || (user.role === 'ADMIN' ? user.master_pin : null)
+                };
+                if (isPinMode) {
+                    delete payload.latitude;
+                    delete payload.longitude;
+                }
+
+                await api.post('/attendance/mark/', payload);
+                alert('Attendance marked successfully! You are Present.');
+            } catch (err) {
+                const message = err.response?.data?.detail || 'Attendance failed due to network or server error.';
+                alert(message);
+            } finally {
+                // setLoading(false) is handled in the Promise Race's finally block
+                setAttendancePin(''); // Always clear pin
+            }
+        };
+
+        if (isPinMode) {
+            await markAttendanceRequest();
+            setLoading(false); // Manually set loading false here for PIN mode
+        } else {
+             if (!navigator.geolocation) {
+                setLoading(false);
+                return alert("Geolocation is not supported by your browser for attendance.");
+             }
+
+            const geoPromise = new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                });
+            });
+
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('TIMEOUT')), 15000)
+            );
+
+            try {
+                console.log("Starting Geolocation Race...");
+                const position = await Promise.race([geoPromise, timeoutPromise]);
+                console.log("Geolocation Success:", position.coords);
+                await markAttendanceRequest(position.coords.latitude, position.coords.longitude);
+            } catch (error) {
+                console.error("Geolocation Error:", error);
+                if (error.message === 'TIMEOUT') {
+                    alert("Location acquisition timed out (15s). Please check signal or try again.");
+                } else if (error.code === 1) { // PERMISSION_DENIED
+                    alert("Location permission denied. Attendance failed.");
+                } else {
+                    alert("Could not get your location. Attendance failed.");
+                }
+            } finally {
+                 setLoading(false); // Ensure loading is false after race completes
+            }
+        }
+    };
+
+    if (loading && !course) return <p>Loading course details...</p>;
     if (!course) return <p>Course not found.</p>;
 
     const isInstructorOwner = user.role === 'LECTURER' && course.instructor?.id === user.user_id;
     const isAdmin = user.role === 'ADMIN';
+    const isStudent = user.role === 'STUDENT';
+    const isEnrolled = isStudent // Simplified check
 
     return (
-        <div className="bg-white p-8 rounded-xl shadow-2xl">
-            <span className="text-base font-semibold text-indigo-600">{course.code}</span>
-            <h1 className="text-4xl font-extrabold text-gray-900 mt-1">{course.name}</h1>
-            
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white p-8 rounded-xl shadow-2xl space-y-8">
+            {/* Course Header */}
+            <div>
+                <span className="text-base font-semibold text-indigo-600">{course.code}</span>
+                <h1 className="text-4xl font-extrabold text-gray-900 mt-1">{course.name}</h1>
+                <p className="text-gray-700 text-lg mt-4">{course.description}</p>
+            </div>
+
+            {/* Course Info Chips */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <InfoChip label="Department" value={course.department.name} />
                 <InfoChip label="Credits" value={course.credits} />
                 <InfoChip label="Instructor" value={course.instructor ? `${course.instructor.first_name} ${course.instructor.last_name}` : 'TBD'} />
             </div>
-            
-            <p className="text-gray-700 text-lg mt-6">{course.description}</p>
-            
-            <div className="mt-8 border-t pt-6 flex justify-between items-center">
+
+            {/* Enroll/Schedule Actions */}
+            <div className="border-t pt-6 flex justify-between items-center">
                 <div>
                     <p className="text-2xl font-bold text-gray-900">{course.seats_left} / {course.capacity}</p>
                     <p className="text-sm text-gray-500">Seats Remaining</p>
                 </div>
-                
-                {/* --- Role-based Actions --- */}
-                {user.role === 'STUDENT' && !course.is_full && (
-                    <button 
+                {isStudent && !course.is_full && (
+                    <button
                         onClick={handleEnroll}
                         disabled={loading}
                         className="px-6 py-3 bg-green-600 text-white rounded-lg shadow-lg text-lg font-semibold hover:bg-green-700 disabled:bg-gray-400"
                     >
-                        {loading ? 'Enrolling...' : 'Enroll Now'}
+                        {loading ? 'Processing...' : 'Enroll Now'}
                     </button>
                 )}
-                
-                {(isAdmin || isInstructorOwner) && (
-                    <div className="flex space-x-4">
-                        <Link 
-                            to={`/courses/${id}/manage`}
-                            className="px-6 py-3 bg-blue-600 text-white rounded-lg shadow-lg text-lg font-semibold hover:bg-blue-700"
-                        >
-                            Manage Enrollments
-                        </Link>
-                    </div>
+                 {(isAdmin || isInstructorOwner) && (
+                    <Link
+                        to={`/courses/${id}/schedule`}
+                        className="px-6 py-3 bg-purple-600 text-white rounded-lg shadow-lg text-lg font-semibold hover:bg-purple-700"
+                    >
+                        Schedule Lectures
+                    </Link>
                 )}
             </div>
+
+            {/* Lecture List and Attendance Marking (for Students) */}
+            {isStudent && (
+                 <div className="border-t pt-6 space-y-4">
+                     <h2 className="text-2xl font-bold text-gray-800">Upcoming Lectures</h2>
+                     {lectures.length === 0 && <p>No lectures scheduled yet.</p>}
+
+                     <div className="space-y-3">
+                        <input
+                            type="text"
+                            value={attendancePin}
+                            onChange={(e) => setAttendancePin(e.target.value)}
+                            placeholder="Enter Attendance PIN (or use location)"
+                            className="w-full md:w-1/2 p-2 border border-gray-300 rounded-lg mr-2"
+                        />
+                         {lectures.map(lecture => (
+                             <div key={lecture.id} className="p-4 border rounded-lg bg-gray-50 flex justify-between items-center">
+                                 <div>
+                                     <p className="font-semibold">{lecture.scheduled_date} | {lecture.start_time.substring(0, 5)} - {lecture.end_time.substring(0, 5)}</p>
+                                     <p className="text-sm text-gray-600">Location: Lat {lecture.location_lat}, Lon {lecture.location_lon}</p>
+                                 </div>
+                                 <button
+                                    onClick={() => handleMarkAttendance(lecture.id)}
+                                    disabled={loading}
+                                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg shadow hover:bg-indigo-700 disabled:bg-gray-400"
+                                >
+                                    {loading ? 'Processing...' : 'Mark Attendance'}
+                                </button>
+                             </div>
+                         ))}
+                     </div>
+                 </div>
+             )}
+
+             {/* Admin/Instructor Links */}
+             {(isAdmin || isInstructorOwner) && (
+                 <div className="border-t pt-6 flex space-x-4">
+                     <Link
+                        to={`/courses/${id}/manage`}
+                        className="px-6 py-3 bg-blue-600 text-white rounded-lg shadow-lg text-lg font-semibold hover:bg-blue-700"
+                    >
+                        Manage Enrollments
+                    </Link>
+                     <Link
+                        to={`/courses/${id}/attendance-report`}
+                        className="px-6 py-3 bg-teal-600 text-white rounded-lg shadow-lg text-lg font-semibold hover:bg-teal-700"
+                    >
+                        View Attendance Report
+                    </Link>
+                 </div>
+             )}
         </div>
     );
 };
 
-const InfoChip = ({ label, value }) => (
-    <div className="bg-gray-100 p-4 rounded-lg">
-        <p className="text-sm text-gray-500">{label}</p>
-        <p className="text-lg font-semibold text-gray-900">{value}</p>
-    </div>
-);
 
-
-// --- Student "My Enrollments" Page (Existing) ---
+// --- Student "My Enrollments" Page ---
 const MyEnrollmentsPage = () => {
-    const { user, api, loading, setLoading } = useAuth();
+    const { api, loading, setLoading } = useAuth();
     const [enrollments, setEnrollments] = useState([]);
 
     const fetchEnrollments = useCallback(() => {
@@ -499,10 +685,10 @@ const MyEnrollmentsPage = () => {
             .catch(err => console.error(err))
             .finally(() => setLoading(false));
     }, [api, setLoading]);
-    
+
     useEffect(() => {
         fetchEnrollments();
-    }, [fetchEnrollments]); 
+    }, [fetchEnrollments]);
 
     const handleDrop = async (enrollmentId) => {
         if (loading || !window.confirm('Are you sure you want to drop this course?')) return;
@@ -510,14 +696,14 @@ const MyEnrollmentsPage = () => {
         try {
             await api.delete(`/enrollments/${enrollmentId}/`);
             alert('Course dropped successfully.');
-            fetchEnrollments(); 
+            fetchEnrollments();
         } catch (err) {
             alert('Failed to drop course.');
         } finally {
             setLoading(false);
         }
     };
-    
+
     if (loading && enrollments.length === 0) return <p>Loading your courses...</p>;
 
     return (
@@ -541,7 +727,7 @@ const MyEnrollmentsPage = () => {
                                 {enr.status}
                             </span>
                             {enr.status === 'ENROLLED' && (
-                                <button 
+                                <button
                                     onClick={() => handleDrop(enr.id)}
                                     disabled={loading}
                                     className="px-4 py-2 bg-red-600 text-white rounded-lg shadow hover:bg-red-700 disabled:bg-gray-400"
@@ -557,25 +743,23 @@ const MyEnrollmentsPage = () => {
     );
 };
 
-// --- Instructor Manage Enrollments Page (Existing) ---
+// --- Instructor Manage Enrollments Page ---
 const ManageEnrollmentsPage = () => {
     const { api, loading, setLoading } = useAuth();
     const [enrollments, setEnrollments] = useState([]);
     const [course, setCourse] = useState(null);
-    const { id } = useParams(); // <-- FIXED: CALLING useParams DIRECTLY
+    const { id } = useParams();
 
     useEffect(() => {
         setLoading(true);
-        // Fetch enrollments (Instructors can use the 'students' custom action)
         api.get(`/courses/${id}/students/`)
             .then(res => setEnrollments(res.data))
             .catch(err => console.error(err))
             .finally(() => setLoading(false));
-            
-        // Also fetch course info
+
         api.get(`/courses/${id}/`).then(res => setCourse(res.data));
     }, [id, api, setLoading]);
-    
+
     if (loading) return <p>Loading student list...</p>;
 
     return (
@@ -609,7 +793,6 @@ const ManageDepartmentsPage = () => {
         setLoading(true);
         api.get('/departments/')
             .then(res => {
-                // FIX: Access the 'results' array if pagination is active, otherwise use the array directly
                 const departmentData = res.data.results || res.data;
                 setDepartments(departmentData);
             })
@@ -669,7 +852,7 @@ const ManageDepartmentsPage = () => {
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <h1 className="text-3xl font-bold text-gray-900">Manage Departments</h1>
-                <button 
+                <button
                     onClick={() => {setIsAdding(true); setFormData({ name: '', code: '', description: '' });}}
                     className="px-4 py-2 bg-indigo-600 text-white rounded-lg shadow hover:bg-indigo-700"
                 >
@@ -719,7 +902,7 @@ const ManageDepartmentsPage = () => {
     );
 };
 
-// --- Create/Edit Course Page (Finalized) ---
+// --- Create/Edit Course Page ---
 const CreateEditCoursePage = () => {
     const { user, api, loading, setLoading } = useAuth();
     const navigate = useNavigate();
@@ -729,19 +912,14 @@ const CreateEditCoursePage = () => {
         name: '', code: '', description: '', credits: 3, capacity: 30,
         department: '', instructor: user.role === 'LECTURER' ? user.user_id : '',
         start_date: new Date().toISOString().split('T')[0],
-        end_date: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 3 months from now
+        end_date: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     });
-    
-    // Function to fetch all required data
+
     const fetchData = useCallback(() => {
         setLoading(true);
-        
-        // 1. Fetch departments
+
         const deptPromise = api.get('/departments/').then(res => res.data.results || res.data);
-        
-        // 2. Fetch all users, then filter for lecturers
-        // Note: Using a single GET request for all users is fine for a small project, 
-        // but in production, we would use /users/?role=LECTURER
+
         const userPromise = api.get('/users/').then(res => {
             const lecturerList = (res.data.results || res.data).filter(u => u.role === 'LECTURER');
             return lecturerList;
@@ -751,8 +929,7 @@ const CreateEditCoursePage = () => {
             .then(([departmentData, userList]) => {
                 setDepartments(departmentData);
                 setInstructors(userList);
-                
-                // Set default department if none is selected
+
                 if (!formData.department && departmentData.length > 0) {
                      setFormData(prev => ({...prev, department: departmentData[0].id}));
                 }
@@ -778,11 +955,11 @@ const CreateEditCoursePage = () => {
         const payload = {
             ...formData,
             department: parseInt(formData.department),
-            instructor: formData.instructor ? parseInt(formData.instructor) : null, 
+            instructor: formData.instructor ? parseInt(formData.instructor) : null,
             credits: parseInt(formData.credits),
             capacity: parseInt(formData.capacity),
         };
-        
+
         try {
             await api.post('/courses/', payload);
             alert('Course created successfully!');
@@ -794,49 +971,49 @@ const CreateEditCoursePage = () => {
             setLoading(false);
         }
     };
-    
+
     if (loading && departments.length === 0) return <p>Loading necessary data...</p>;
-    
+
     const isInstructor = user.role === 'LECTURER';
 
     return (
         <div className="bg-white p-8 rounded-xl shadow-2xl">
             <h1 className="text-3xl font-bold text-gray-900 mb-6">Create New Course</h1>
             <form onSubmit={handleSubmit} className="space-y-6">
-                
+
                 {/* Basic Course Info */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <InputField label="Course Name" name="name" value={formData.name} onChange={handleFormChange} required />
                     <InputField label="Course Code (Unique)" name="code" value={formData.code} onChange={handleFormChange} required />
                 </div>
-                
+
                 <TextAreaField label="Description" name="description" value={formData.description} onChange={handleFormChange} rows="3" />
-                
+
                 {/* Credits & Capacity */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <InputField label="Credits" name="credits" type="number" value={formData.credits} onChange={handleFormChange} required />
                     <InputField label="Capacity" name="capacity" type="number" value={formData.capacity} onChange={handleFormChange} required />
                     <SelectField label="Department" name="department" value={formData.department} onChange={handleFormChange} options={departments} required disabled={loading} />
                 </div>
-                
+
                 {/* Instructor & Dates */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <SelectField 
-                        label="Instructor" 
-                        name="instructor" 
-                        value={formData.instructor} 
-                        onChange={handleFormChange} 
-                        options={instructors} 
-                        isUser={true} 
+                    <SelectField
+                        label="Instructor"
+                        name="instructor"
+                        value={formData.instructor}
+                        onChange={handleFormChange}
+                        options={instructors}
+                        isUser={true}
                         required={!isInstructor}
-                        disabled={loading || isInstructor} 
+                        disabled={loading || isInstructor}
                     />
                     <InputField label="Start Date" name="start_date" type="date" value={formData.start_date} onChange={handleFormChange} required />
                     <InputField label="End Date" name="end_date" type="date" value={formData.end_date} onChange={handleFormChange} required />
                 </div>
 
-                <button 
-                    type="submit" 
+                <button
+                    type="submit"
                     disabled={loading}
                     className="w-full py-3 bg-indigo-600 text-white rounded-lg text-lg font-semibold hover:bg-indigo-700 disabled:bg-gray-400"
                 >
@@ -847,56 +1024,248 @@ const CreateEditCoursePage = () => {
     );
 };
 
-// Reusable Form Field Components
-const InputField = ({ label, name, type = "text", value, onChange, required = false }) => (
-    <div>
-        <label className="block text-sm font-medium text-gray-700">{label}</label>
-        <input 
-            type={type} 
-            name={name} 
-            value={value} 
-            onChange={onChange} 
-            required={required} 
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500" 
-        />
-    </div>
-);
+// --- NEW: Lecture Schedule Page ---
+const LectureSchedulePage = () => {
+    const { user, api, loading, setLoading } = useAuth();
+    const [courses, setCourses] = useState([]);
+    const [selectedCourseId, setSelectedCourseId] = useState('');
+    const [lectures, setLectures] = useState([]);
+    const [formData, setFormData] = useState({
+        course: '', scheduled_date: new Date().toISOString().split('T')[0], start_time: '', end_time: '',
+        location_lat: '', location_lon: '', attendance_radius: 100, timezone: 'Africa/Cairo' // Default Cairo
+    });
+    const [currentPin, setCurrentPin] = useState(null);
 
-const TextAreaField = ({ label, name, value, onChange, rows, required = false }) => (
-    <div>
-        <label className="block text-sm font-medium text-gray-700">{label}</label>
-        <textarea 
-            name={name} 
-            value={value} 
-            onChange={onChange} 
-            rows={rows}
-            required={required} 
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500" 
-        />
-    </div>
-);
+    // Fetch courses based on role
+    useEffect(() => {
+        setLoading(true);
+        const url = user.role === 'ADMIN' ? '/courses/' : '/courses/?instructor=' + user.user_id;
+        api.get(url)
+            .then(res => {
+                const courseData = res.data.results || res.data;
+                setCourses(courseData);
+                if (courseData.length > 0) {
+                    setSelectedCourseId(courseData[0].id);
+                }
+            })
+            .catch(err => alert("Failed to load courses."))
+            .finally(() => setLoading(false));
+    }, [api, setLoading, user]);
 
-const SelectField = ({ label, name, value, onChange, options, isUser = false, required = false, disabled = false }) => (
-    <div>
-        <label className="block text-sm font-medium text-gray-700">{label}</label>
-        <select 
-            name={name} 
-            value={value} 
-            onChange={onChange} 
-            required={required} 
-            disabled={disabled}
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 bg-white disabled:bg-gray-200"
-        >
-            <option value="">--- Select ---</option>
-            {options.map(opt => (
-                <option key={opt.id} value={opt.id}>
-                    {isUser ? `${opt.first_name} ${opt.last_name} (${opt.email})` : `${opt.name} (${opt.code})`}
-                </option>
-            ))}
-        </select>
-    </div>
-);
+    // Fetch lectures when selected course changes
+    useEffect(() => {
+        if (!selectedCourseId) return;
+        setLoading(true);
+        api.get(`/lectures/?course=${selectedCourseId}`)
+            .then(res => setLectures(res.data.results || res.data))
+            .catch(err => alert("Failed to load lectures for this course."))
+            .finally(() => setLoading(false));
+    }, [selectedCourseId, api, setLoading]);
 
+    const handleFormChange = (e) => {
+        setFormData({ ...formData, [e.target.name]: e.target.value });
+    };
+
+    // Handle lecture creation
+    const handleCreateLecture = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        const payload = { ...formData, course: selectedCourseId };
+        try {
+            await api.post('/lectures/', payload);
+            alert('Lecture scheduled successfully!');
+            // Refresh lectures for the selected course
+            const res = await api.get(`/lectures/?course=${selectedCourseId}`);
+            setLectures(res.data.results || res.data);
+            // Reset form
+            setFormData(prev => ({
+                ...prev, scheduled_date: new Date().toISOString().split('T')[0], start_time: '', end_time: '',
+                location_lat: '', location_lon: '', attendance_radius: 100
+            }));
+        } catch (err) {
+            console.error(err.response?.data);
+            let errorMessage = "Failed to schedule lecture.";
+            if (err.response?.data) {
+                 const errors = err.response.data;
+                 const firstErrorField = Object.keys(errors)[0];
+                 if(firstErrorField && Array.isArray(errors[firstErrorField]) && errors[firstErrorField].length > 0) {
+                      errorMessage = `${firstErrorField}: ${errors[firstErrorField][0]}`;
+                 } else if (errors.detail) {
+                     errorMessage = errors.detail;
+                 } else if (errors.non_field_errors && errors.non_field_errors.length > 0) {
+                    errorMessage = errors.non_field_errors[0];
+                 }
+            }
+            alert(errorMessage);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Generate PIN for a specific lecture
+    const handleGeneratePin = async (lectureId) => {
+         setLoading(true);
+         setCurrentPin('Generating...');
+         try {
+             const res = await api.post(`/lectures/${lectureId}/generate_pin/`);
+             setCurrentPin(`${res.data.pin}-${lectureId}`);
+         } catch (err) {
+             setCurrentPin('Error');
+             alert("Failed to generate PIN.");
+         } finally {
+            setLoading(false);
+         }
+    };
+
+    return (
+        <div className="space-y-6">
+            <h1 className="text-3xl font-bold text-gray-900">Schedule Lectures</h1>
+
+            {/* Course Selection Dropdown */}
+            <div className="bg-white p-4 rounded-lg shadow">
+                 <label className="block text-sm font-medium text-gray-700 mb-1">Select Course to Manage</label>
+                 <select
+                    value={selectedCourseId}
+                    onChange={(e) => setSelectedCourseId(e.target.value)}
+                    className="w-full p-2 border border-gray-300 rounded-lg bg-white"
+                    disabled={loading}
+                 >
+                     <option value="">-- Select Course --</option>
+                     {courses.map(c => <option key={c.id} value={c.id}>{c.code} - {c.name}</option>)}
+                 </select>
+            </div>
+
+            {/* Create Lecture Form */}
+            {selectedCourseId && (
+                <div className="bg-white p-6 rounded-xl shadow-lg border border-indigo-200">
+                    <h2 className="text-xl font-bold mb-4">Add New Lecture</h2>
+                    <form onSubmit={handleCreateLecture} className="space-y-4">
+                        {/* Date and Time */}
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <InputField label="Date" name="scheduled_date" type="date" value={formData.scheduled_date} onChange={handleFormChange} required />
+                            <InputField label="Start Time" name="start_time" type="time" value={formData.start_time} onChange={handleFormChange} required />
+                            <InputField label="End Time" name="end_time" type="time" value={formData.end_time} onChange={handleFormChange} required />
+                            {/* Timezone Selection */}
+                             <div>
+                                <label className="block text-sm font-medium text-gray-700">Timezone</label>
+                                <select
+                                    name="timezone"
+                                    value={formData.timezone}
+                                    onChange={handleFormChange}
+                                    required
+                                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                                >
+                                    <option value="Africa/Cairo">Cairo</option>
+                                    <option value="Africa/Khartoum">Khartoum</option>
+                                    <option value="UTC">UTC</option>
+                                </select>
+                             </div>
+                        </div>
+                        {/* Location */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <InputField label="Latitude" name="location_lat" type="number" step="any" value={formData.location_lat} onChange={handleFormChange} placeholder="e.g., 34.0522" required/>
+                            <InputField label="Longitude" name="location_lon" type="number" step="any" value={formData.location_lon} onChange={handleFormChange} placeholder="e.g., -118.2437" required/>
+                            <InputField label="Radius (Meters)" name="attendance_radius" type="number" value={formData.attendance_radius} onChange={handleFormChange} required />
+                        </div>
+                        <button type="submit" disabled={loading} className="w-full py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400">
+                            {loading ? 'Scheduling...' : 'Schedule Lecture'}
+                        </button>
+                    </form>
+                </div>
+            )}
+
+             {/* List of Scheduled Lectures */}
+            <div className="bg-white p-6 rounded-xl shadow-lg">
+                <h2 className="text-xl font-bold mb-4">Scheduled Lectures for Selected Course</h2>
+                 {loading && lectures.length === 0 && <p>Loading lectures...</p>}
+                 {!loading && lectures.length === 0 && <p>No lectures scheduled for this course yet.</p>}
+                 <div className="space-y-3">
+                     {lectures.map(lec => (
+                         <div key={lec.id} className="p-4 border rounded-lg bg-gray-50 flex justify-between items-center">
+                             <div>
+                                 <p className="font-semibold">{lec.scheduled_date} | {lec.start_time.substring(0,5)} - {lec.end_time.substring(0,5)} ({lec.timezone})</p>
+                                 <p className="text-sm text-gray-600">PIN: {lec.attendance_pin || 'Not Generated'} ({lec.is_pin_active ? 'Active' : 'Expired'})</p>
+                             </div>
+                             <div>
+                                 {/* Display current PIN if generated */}
+                                 {currentPin && lec.id === parseInt(currentPin.split('-')[1]) && ( // Simple check
+                                    <span className="font-mono text-lg font-bold mr-4">{currentPin.split('-')[0]}</span>
+                                 )}
+                                 <button
+                                     onClick={() => handleGeneratePin(lec.id)}
+                                     className="px-3 py-1 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                                     disabled={loading}
+                                 >
+                                     Generate/Show PIN
+                                 </button>
+                             </div>
+                         </div>
+                     ))}
+                 </div>
+            </div>
+        </div>
+    );
+};
+
+
+// --- Attendance Report Page ---
+const AttendanceReportPage = () => {
+    const { api, loading, setLoading } = useAuth();
+    const [report, setReport] = useState(null);
+    const { id } = useParams(); // Course ID from URL
+
+    useEffect(() => {
+        setLoading(true);
+        // FIX: Updated URL to match the one in CourseViewSet
+        api.get(`/courses/${id}/attendance-report/`) 
+            .then(res => setReport(res.data))
+            .catch(err => alert("Failed to fetch attendance report."))
+            .finally(() => setLoading(false));
+    }, [id, api, setLoading]);
+
+    if (loading || !report) return <p>Generating attendance report...</p>;
+
+    return (
+        <div className="bg-white p-8 rounded-xl shadow-2xl">
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Attendance Report: {report.course_code}</h1>
+            <p className="text-xl font-semibold text-indigo-600 mb-6">Total Sessions Tracked: {report.total_sessions_tracked}</p>
+
+            <table className="min-w-full divide-y divide-gray-200">
+                <thead>
+                    <tr>
+                        <th className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student Name</th>
+                        <th className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Present</th>
+                        <th className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Absent</th>
+                        <th className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Late</th>
+                        <th className="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Attendance %</th>
+                    </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                    {report.student_summary.map((stat, index) => (
+                        <tr key={index}>
+                            <td className="px-6 py-4 whitespace-nowJrap text-sm font-medium text-gray-900">{stat.name}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-semibold">{stat.present}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600 font-semibold">{stat.absent}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-yellow-600 font-semibold">{stat.late}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-700">{stat.attendance_percentage}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+};
+
+
+// --- Helper component to redirect logged-in users ---
+const HomeRedirect = () => {
+    const { user } = useAuth();
+    if (!user) {
+        return <Navigate to="/auth" replace />;
+    }
+    // All roles default to the courses page
+    return <Navigate to="/courses" replace />;
+};
 
 // --- 8. Main App Component (Routing) ---
 function App() {
@@ -906,7 +1275,7 @@ function App() {
                 <Routes>
                     {/* Public Route */}
                     <Route path="/auth" element={<AuthPage />} />
-                    
+
                     {/* Routes inside MainLayout */}
                     <Route
                         path="/*"
@@ -914,36 +1283,30 @@ function App() {
                             <MainLayout>
                                 <Routes>
                                     {/* --- Course & Enrollment Routes --- */}
-                                    <Route 
-                                        path="/courses" 
-                                        element={<ProtectedRoute><CoursesListPage /></ProtectedRoute>} 
+                                    <Route path="/courses" element={<ProtectedRoute><CoursesListPage /></ProtectedRoute>} />
+                                    <Route path="/courses/new" element={<ProtectedRoute roles={['ADMIN', 'LECTURER']}><CreateEditCoursePage /></ProtectedRoute>} />
+                                    <Route path="/courses/:id" element={<ProtectedRoute><CourseDetailPage /></ProtectedRoute>} />
+                                    <Route path="/courses/:id/manage" element={<ProtectedRoute roles={['ADMIN', 'LECTURER']}><ManageEnrollmentsPage /></ProtectedRoute>} />
+                                    <Route path="/my-enrollments" element={<ProtectedRoute roles={['STUDENT']}><MyEnrollmentsPage /></ProtectedRoute>} />
+                                    <Route path="/manage-departments" element={<ProtectedRoute roles={['ADMIN']}><ManageDepartmentsPage /></ProtectedRoute>} />
+
+                                    {/* --- Lecture & Attendance Routes --- */}
+                                    <Route
+                                        path="/courses/:id/schedule"
+                                        element={<ProtectedRoute roles={['ADMIN', 'LECTURER']}><LectureSchedulePage /></ProtectedRoute>}
                                     />
-                                    <Route 
-                                        path="/courses/new" 
-                                        element={<ProtectedRoute roles={['ADMIN', 'LECTURER']}><CreateEditCoursePage /></ProtectedRoute>} 
+                                     <Route
+                                        path="/schedule-lectures"
+                                        element={<ProtectedRoute roles={['ADMIN', 'LECTURER']}><LectureSchedulePage /></ProtectedRoute>}
                                     />
-                                    <Route 
-                                        path="/courses/:id" 
-                                        element={<ProtectedRoute><CourseDetailPage /></ProtectedRoute>} 
+                                    {/* FIX: Corrected route for attendance report */}
+                                    <Route
+                                        path="/courses/:id/attendance-report"
+                                        element={<ProtectedRoute roles={['ADMIN', 'LECTURER']}><AttendanceReportPage /></ProtectedRoute>}
                                     />
-                                    <Route 
-                                        path="/courses/:id/manage" 
-                                        element={<ProtectedRoute roles={['ADMIN', 'LECTURER']}><ManageEnrollmentsPage /></ProtectedRoute>} 
-                                    />
-                                    <Route 
-                                        path="/my-enrollments" 
-                                        element={<ProtectedRoute roles={['STUDENT']}><MyEnrollmentsPage /></ProtectedRoute>} 
-                                    />
-                                    <Route 
-                                        path="/manage-departments" 
-                                        element={<ProtectedRoute roles={['ADMIN']}><ManageDepartmentsPage /></ProtectedRoute>} 
-                                    />
-                                    
+
                                     {/* --- Original Core Routes --- */}
-                                    <Route 
-                                        path="/profile" 
-                                        element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} 
-                                    />
+                                    <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
 
                                     {/* Root path redirect */}
                                     <Route path="/" element={<HomeRedirect />} />
@@ -958,15 +1321,5 @@ function App() {
         </BrowserRouter>
     );
 }
-
-// Helper component to redirect logged-in users
-const HomeRedirect = () => {
-    const { user } = useAuth();
-    if (!user) {
-        return <Navigate to="/auth" replace />;
-    }
-    // All roles default to the courses page
-    return <Navigate to="/courses" replace />;
-};
 
 export default App;

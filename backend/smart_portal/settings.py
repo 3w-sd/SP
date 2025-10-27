@@ -1,27 +1,24 @@
-from pathlib import Path
-import os
-from datetime import timedelta
+# File: backend/smart_portal/settings.py
 
-# --- START: PYMYSQL CONFIGURATION ---
-# This line tells Django to use PyMySQL instead of mysqlclient
-import pymysql
-pymysql.install_as_MySQLdb()
-# --- END: PYMYSQL CONFIGURATION ---
+from pathlib import Path
+from datetime import timedelta
+import os
+import pymysql # Ensure PyMySQL is imported if used
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
+# See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-YOUR-SECRET-KEY-HERE'
+# Replace with your actual secret key, potentially loaded from environment variables
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-fallback-key-if-not-set') 
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True' # Default to True for development
 
-ALLOWED_HOSTS = []
-
+ALLOWED_HOSTS = [] # Configure for production (e.g., ['yourdomain.com'])
 
 # Application definition
 
@@ -36,16 +33,15 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
-    'django_filters',  # <-- ADD THIS
+    'django_filters',
     # Local apps
-    'api', 
+    'api.apps.ApiConfig', # Use explicit AppConfig path
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    # CORS Middleware
-    'corsheaders.middleware.CorsMiddleware',
+    'corsheaders.middleware.CorsMiddleware', # Add CORS middleware
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -73,90 +69,97 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'smart_portal.wsgi.application'
 
-
 # Database
-# https://docs.djangoproject.com/en/4.2/ref/settings/#databases
+# Use PyMySQL as the database driver
+pymysql.install_as_MySQLdb()
 
-# --- CONFIGURE FOR MYSQL using PyMySQL ---
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql', # Still use this name
-        'NAME': 'smart_portal_db', # Your DB Name
-        'USER': 'root',             # Your DB User
-        'PASSWORD': '1234',     # Your DB Password
-        'HOST': '127.0.0.1',        # Or 'localhost'
-        'PORT': '3306',
+        'ENGINE': 'django.db.backends.mysql', 
+        'NAME': os.environ.get('DB_NAME', 'smart_portal_db'), # Use env vars or defaults
+        'USER': os.environ.get('DB_USER', 'root'),             
+        'PASSWORD': os.environ.get('DB_PASSWORD', '1234'),     
+        'HOST': os.environ.get('DB_HOST', '127.0.0.1'),        
+        'PORT': os.environ.get('DB_PORT', '3306'),
     }
 }
 
-# --- CUSTOM USER MODEL ---
+# Custom User Model
 AUTH_USER_MODEL = 'api.User'
 
-
 # Password validation
-# https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
+# https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 
 AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
+    { 'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator', },
+    { 'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator', },
+    { 'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator', },
+    { 'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator', },
 ]
 
-
 # Internationalization
-# https://docs.djangoproject.com/en/4.2/topics/i18n/
+# https://docs.djangoproject.com/en/5.2/topics/i18n/
 
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
-USE_I18N = True
-USE_TZ = True
 
+# --- TIMEZONE SETTINGS ---
+# Use UTC internally, rely on USE_TZ=True for conversions based on Lecture.timezone
+TIME_ZONE = 'UTC' 
+USE_I18N = True
+USE_TZ = True # Enable timezone support (CRUCIAL for correct time comparisons)
 
 # Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/4.2/howto/static-files/
+# https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+# Add STATIC_ROOT for collectstatic in production
+# STATIC_ROOT = BASE_DIR / 'staticfiles' 
 
 # Default primary key field type
-# https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
+# https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# --- CORS SETTINGS ---
-# Allow React frontend (running on port 3000) to make requests
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
-
-# --- DJANGO REST FRAMEWORK SETTINGS ---
+# --- Django REST Framework Settings ---
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
-        'rest_framework.permissions.IsAuthenticated',
+        # Default to IsAuthenticated for security, specific views can override
+        'rest_framework.permissions.IsAuthenticated', 
     ),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 10,
+    'PAGE_SIZE': 10, # Default page size for lists
     'DEFAULT_FILTER_BACKENDS': (
         'django_filters.rest_framework.DjangoFilterBackend',
+        'rest_framework.filters.SearchFilter', # Add SearchFilter globally if needed often
     ),
 }
 
-# --- SIMPLE JWT SETTINGS ---
+# --- Simple JWT Settings ---
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=1), # Increased lifetime
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7), # Longer refresh token validity
+    'ROTATE_REFRESH_TOKENS': False,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': SECRET_KEY,
+    'VERIFYING_KEY': None,
+    'AUDIENCE': None,
+    'ISSUER': None,
     'AUTH_HEADER_TYPES': ('Bearer',),
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
+    'TOKEN_TYPE_CLAIM': 'token_type',
 }
+
+# --- CORS Settings ---
+# Allow requests from your React frontend development server
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000", # React default port
+    # Add other frontend origins if needed (e.g., deployed frontend URL)
+]
+# Or, for very open development (less secure):
+# CORS_ALLOW_ALL_ORIGINS = DEBUG
