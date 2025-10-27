@@ -1,11 +1,14 @@
 # File: backend/api/models.py
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
-from django.core.exceptions import ValidationError
 from django.conf import settings
+from django.db.models.functions import ExtractDay, ExtractMonth, ExtractYear # Needed for Meta constraint
+from django.utils.timezone import now
+from datetime import timedelta 
+from django.utils import timezone 
+import pytz # Import pytz
 
-# --- Custom User Manager ---
-
+# --- Custom User Manager (Existing) ---
 class CustomUserManager(BaseUserManager):
     """
     Custom manager for the User model where email is the unique identifier
@@ -35,11 +38,7 @@ class CustomUserManager(BaseUserManager):
 
 
 # --- CORE MODELS ---
-
 class User(AbstractBaseUser, PermissionsMixin):
-    """
-    Custom User model with email as the unique identifier and role-based access.
-    """
     ROLE_CHOICES = (
         ('ADMIN', 'Admin'),
         ('LECTURER', 'Lecturer'),
@@ -54,6 +53,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     date_joined = models.DateTimeField(auto_now_add=True)
+    
+    # MASTER PIN FIELD (Admin can set this for themselves)
+    master_pin = models.CharField(max_length=10, blank=True, null=True, help_text="Master PIN for universal attendance (Admin Only)")
 
     objects = CustomUserManager()
 
@@ -63,7 +65,6 @@ class User(AbstractBaseUser, PermissionsMixin):
     def __str__(self):
         return self.email
     
-    # Overriding save to ensure correct staff status based on role
     def save(self, *args, **kwargs):
         if self.role == 'ADMIN' or self.role == 'LECTURER':
             self.is_staff = True
@@ -72,7 +73,6 @@ class User(AbstractBaseUser, PermissionsMixin):
         super().save(*args, **kwargs)
 
 class Department(models.Model):
-    """Model for academic departments (e.g., Computer Science, Engineering)."""
     name = models.CharField(max_length=100, unique=True)
     code = models.CharField(max_length=10, unique=True)
     description = models.TextField(blank=True, null=True)
@@ -83,14 +83,13 @@ class Department(models.Model):
         return self.name
 
 class Course(models.Model):
-    """Model for courses offered (e.g., CS101, Calculus)."""
+    """Model for courses offered (Location fields REMOVED)."""
     name = models.CharField(max_length=150)
     code = models.CharField(max_length=20, unique=True)
     description = models.TextField(blank=True, null=True)
     credits = models.IntegerField(default=3)
     
     department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name='courses')
-    # Limit instructor choices to users with the 'LECTURER' role
     instructor = models.ForeignKey(
         settings.AUTH_USER_MODEL, 
         on_delete=models.SET_NULL, 
@@ -111,16 +110,55 @@ class Course(models.Model):
         return f"{self.code} - {self.name}"
     
     def seats_left(self):
-        """Calculates remaining seats."""
         enrolled_count = self.enrollments.filter(status='ENROLLED').count()
         return self.capacity - enrolled_count
 
     def is_full(self):
-        """Checks if the course has reached capacity."""
         return self.seats_left() <= 0
 
+class Lecture(models.Model):
+    """Represents a single scheduled class session with timezone."""
+    
+    # Timezone choices (add more as needed from pytz.all_timezones)
+    TIMEZONE_CHOICES = [
+        ('Africa/Cairo', 'Cairo (EET/EEST)'),
+        ('Africa/Khartoum', 'Khartoum (CAT)'),
+        ('UTC', 'UTC'), 
+        # Add more relevant timezones if required
+    ]
+
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='lectures')
+    scheduled_date = models.DateField()
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    
+    # Location for this specific session
+    location_lat = models.DecimalField(max_digits=9, decimal_places=6, help_text="Latitude for attendance check")
+    location_lon = models.DecimalField(max_digits=9, decimal_places=6, help_text="Longitude for attendance check")
+    attendance_radius = models.IntegerField(default=100, help_text="Allowed radius (meters)")
+    
+    # NEW: Timezone field for this lecture
+    timezone = models.CharField(max_length=50, choices=TIMEZONE_CHOICES, default='Africa/Cairo')
+    
+    # PIN for QR/Manual Check (changes every 10 minutes)
+    attendance_pin = models.CharField(max_length=6, blank=True, null=True)
+    pin_generated_at = models.DateTimeField(auto_now_add=True) # Use auto_now_add initially
+    
+    class Meta:
+        unique_together = ('course', 'scheduled_date', 'start_time')
+        ordering = ['scheduled_date', 'start_time']
+        
+    def __str__(self):
+        return f"{self.course.code} - {self.scheduled_date.strftime('%Y-%m-%d')} ({self.start_time.strftime('%H:%M')} {self.timezone})"
+    
+    def is_pin_active(self):
+        """Checks if the current PIN is still valid (generated within the last 10 minutes)."""
+        if not self.attendance_pin:
+            return False
+        # Compare timezone-aware datetime objects
+        return (timezone.now() - self.pin_generated_at) < timedelta(minutes=10)
+
 class Enrollment(models.Model):
-    """Model connecting Students to Courses."""
     STATUS_CHOICES = (
         ('PENDING', 'Pending'),
         ('ENROLLED', 'Enrolled'),
@@ -141,27 +179,56 @@ class Enrollment(models.Model):
     final_grade_letter = models.CharField(max_length=2, null=True, blank=True)
 
     class Meta:
-        # A student cannot enroll in the same course twice
         unique_together = ('student', 'course')
 
     def __str__(self):
         return f"{self.student.email} enrolled in {self.course.code}"
 
     def enroll(self):
-        """Sets status to ENROLLED if not already."""
         if self.status != 'ENROLLED':
             self.status = 'ENROLLED'
             self.save()
 
     def drop(self):
-        """Sets status to DROPPED."""
         if self.status != 'DROPPED':
             self.status = 'DROPPED'
             self.save()
     
     def complete(self, grade, letter):
-        """Sets status to COMPLETED and assigns a grade."""
         self.status = 'COMPLETED'
         self.grade = grade
         self.final_grade_letter = letter
         self.save()
+        
+# --- ATTENDANCE MODEL MODIFIED ---
+
+class Attendance(models.Model):
+    """Tracks attendance records (now linked to a specific Lecture)."""
+    STATUS_CHOICES = (
+        ('PRESENT', 'Present'),
+        ('ABSENT', 'Absent'),
+        ('LATE', 'Late'),
+    )
+
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        limit_choices_to={'role': 'STUDENT'},
+        related_name='attendance_records'
+    )
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='course_attendance')
+    lecture = models.ForeignKey('Lecture', on_delete=models.CASCADE, related_name='lecture_attendance') # NEW FK
+    timestamp = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='ABSENT')
+    
+    # Location data stored upon marking attendance
+    latitude = models.DecimalField(max_digits=18, decimal_places=15, null=True, blank=True) # Increased precision
+    longitude = models.DecimalField(max_digits=18, decimal_places=15, null=True, blank=True) # Increased precision
+    
+    class Meta:
+        # A student can only mark attendance once per specific lecture session
+        unique_together = ('student', 'lecture')
+        ordering = ['-timestamp']
+        
+    def __str__(self):
+        return f"{self.student.email} - {self.course.code} / {self.lecture.scheduled_date} ({self.status})"
